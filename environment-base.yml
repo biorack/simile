@@ -1,0 +1,6 @@
+name: simile
+dependencies:
+  - python=3.7
+  - sortedcollections
+  - numpy
+  - scipy
