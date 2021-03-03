@@ -17,7 +17,7 @@ SIMILE (Significant Interrelation of MS/MS Ions via Laplacian Embedding) is a Py
 
 ## Installation
 
-Use the package manager [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/index.html) to install environment.yml for minimum requirements. Alternatively, use eniviroment-example.yml to run the example notebook.
+Use the package manager [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/index.html) to install environment-base.yml for minimum requirements. Alternatively, use environment.yml to run the example notebook.
 
 ```bash
 conda env create -f environment-base.yml
