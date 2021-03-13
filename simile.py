@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.linalg import eig
+from scipy.optimize import linear_sum_assignment
 from sortedcollections import SortedList, SortedSet
 
 #########################
@@ -32,11 +33,17 @@ def laplacian(W):
 
     return L
 
+def sym_norm_laplacian(W):
+    L = laplacian(W)
+
+    return (L+L.T)/2
+
 
 ###############################
 # Similarity Matrix Functions
 ###############################
 def counts_matrix(A, tolerance=.01):
+
     counts = np.zeros_like(A, dtype=float)
 
     sorted_elements = SortedList(np.ndenumerate(A), key=lambda i:i[1])
@@ -50,19 +57,25 @@ def counts_matrix(A, tolerance=.01):
 
     return counts
 
-def substitution_matrix(mzs1, mzs2, tolerance=.01):
+def similarity_matrix(mzs1, mzs2, pmz1=None, pmz2=None, tolerance=.01):
     mzs = np.concatenate([mzs1,mzs2])
-
     mz_diffs = np.subtract.outer(mzs,mzs)
 
     frag_count = np.zeros_like(mz_diffs)
 
-    frag_count[:len(mzs1)] += counts_matrix(mz_diffs[:len(mzs1)], tolerance)
-    frag_count[len(mzs1):] += counts_matrix(mz_diffs[len(mzs1):], tolerance)
+    frag_count[:len(mzs1)] = counts_matrix(mz_diffs[:len(mzs1)], tolerance)
+    frag_count[len(mzs1):] = counts_matrix(mz_diffs[len(mzs1):], tolerance)
 
-    frag_sub = np.linalg.pinv(laplacian(frag_count))
+    if pmz1 is not None and pmz2 is not None:
+        nls = np.concatenate([mzs1-pmz1,mzs2-pmz2])
+        nl_diffs = np.subtract.outer(nls,nls)
 
-    return frag_sub
+        frag_count[:len(mzs1)] = np.maximum(frag_count[:len(mzs1)], counts_matrix(nl_diffs[:len(mzs1)], tolerance))
+        frag_count[len(mzs1):] = np.maximum(frag_count[len(mzs1):], counts_matrix(nl_diffs[len(mzs1):], tolerance))
+
+    frag_sim = np.linalg.pinv(sym_norm_laplacian(frag_count), hermitian=False)
+
+    return frag_sim
 
 
 #####################
@@ -81,7 +94,6 @@ def pairwise_align(S):
                                   key=lambda a: a[0])
 
     idx = np.array([A.shape[0]-1, A.shape[1]-1])
-
     score = A[idx[0],idx[1]]
 
     alignment = []
@@ -93,7 +105,19 @@ def pairwise_align(S):
 
     return score, alignment
 
-def fast_pairwise_align(S):
+def pairwise_match(S):
+    S = S.clip(0)
+
+    col_match, row_match = linear_sum_assignment(S, maximize=True)
+
+    match_scores = S[[tuple(col_match),tuple(row_match)]]
+    score = match_scores.sum()
+    good_match = match_scores > 0
+    matches = np.asarray([row_match[good_match],col_match[good_match]]).T
+
+    return score, matches
+
+def fast_pairwise_alignment_score(S):
     if S.shape[0] < S.shape[1]:
         s = np.zeros(tuple([S.shape[0]+1])+S.shape[2:])
 
@@ -107,6 +131,13 @@ def fast_pairwise_align(S):
             s[1:] = np.maximum(s[1:], np.maximum.accumulate(s[:-1]+S[i]))
 
     return s[-1]
+
+def approximate_pairwise_matches_score(S):
+    return S.clip(0).sum(axis=(0,1))
+
+def sort_matches(S,matches):
+    idx = np.argsort(S[[tuple(matches.T[1]),tuple(matches.T[0])]])[::-1]
+    return matches[idx]
 
 
 ######################
@@ -124,31 +155,48 @@ def ordered_partition(n,m,rng):
         return np.concatenate([order ^ choice,
                                order & choice])
 
-def null_distribution(S, mzs1, mzs2, iterations=1000, seed=None):
-    mz_order = np.argsort(np.concatenate([mzs1,mzs2]))
+def null_distribution(S, mzs1, mzs2, pmz1=None, pmz2=None, kind='align',
+                      iterations=1000, seed=None):
+    if kind == 'align':
+        score_func = fast_pairwise_alignment_score
+    elif kind == 'match':
+        score_func = approximate_pairwise_matches_score
+    else:
+        assert kind in ['align', 'match']
 
     rng = np.random.RandomState(seed)
 
-    S1_perms = np.zeros((len(mzs1), S.shape[0]-len(mzs1), iterations))
-    S2_perms = np.zeros((S.shape[0]-len(mzs1), len(mzs1), iterations))
-
+    idx_perms = np.zeros((S.shape[0], iterations), dtype=int)
     for i in range(iterations):
-        idx_order = ordered_partition(S.shape[0],len(mzs1),rng)
-        mz_idx = mz_order[idx_order]
+        idx_perms[:,i] = ordered_partition(S.shape[0],len(mzs1),rng)
 
-        S1_perms[:,:,i] = S[mz_idx[:len(mzs1),None],mz_idx[len(mzs1):]]
-        S2_perms[:,:,i] = S[mz_idx[len(mzs1):,None],mz_idx[:len(mzs1)]]
+    mz_order = np.argsort(np.concatenate([mzs1,mzs2]))
 
-    null_dist = (fast_pairwise_align(S1_perms)+
-                 fast_pairwise_align(S2_perms))/2
+    if pmz1 is not None and pmz2 is not None:
+        nl_order = np.argsort(np.concatenate([mzs1-pmz1,mzs2-pmz2]))
+        null_dist = score_func(S[mz_order[idx_perms][:len(mzs1), None],
+                                 mz_order[idx_perms][len(mzs1):]] +
+                               S[nl_order[idx_perms][:len(mzs1), None],
+                                 nl_order[idx_perms][len(mzs1):]]
+                               )/2
+    else:
+        null_dist = score_func(S[mz_order[idx_perms][:len(mzs1), None],
+                                 mz_order[idx_perms][len(mzs1):]])
 
     return null_dist
 
-def alignment_test(S, mzs1, mzs2, max_log_iter=3, early_stop=True, seed=None):
+def significance_test(S, mzs1, mzs2, pmz1=None, pmz2=None, kind='align',
+                      max_log_iter=3, early_stop=True, seed=None):
     assert isinstance(max_log_iter, int)
 
-    observed_score = (fast_pairwise_align(S[:len(mzs1),len(mzs1):])+
-                      fast_pairwise_align(S[len(mzs1):,:len(mzs1)]))/2
+    if kind == 'align':
+        score_func = fast_pairwise_alignment_score
+    elif kind == 'match':
+        score_func = approximate_pairwise_matches_score
+    else:
+        assert kind in ['align', 'match']
+
+    observed_score = score_func(S[:len(mzs1),len(mzs1):])
 
     null_dist = []
     p_value = 1.0
@@ -161,7 +209,7 @@ def alignment_test(S, mzs1, mzs2, max_log_iter=3, early_stop=True, seed=None):
     for log_iter in range(start, max_log_iter+1):
         iterations = 10**log_iter
 
-        null_dist.extend(null_distribution(S, mzs1, mzs2,
+        null_dist.extend(null_distribution(S, mzs1, mzs2, pmz1, pmz2, kind,
                                            iterations-len(null_dist), seed))
 
         new_p_value = (observed_score <= np.array(null_dist)).sum()/iterations
