@@ -44,16 +44,23 @@ def sym_norm_laplacian(W):
 ###############################
 def counts_matrix(A, tolerance=.01):
 
-    counts = np.zeros_like(A, dtype=float)
 
-    sorted_elements = SortedList(np.ndenumerate(A), key=lambda i:i[1])
+    if isinstance(A, list):
+        sorted_elements = SortedList(key=lambda i:i[1])
+        for a in A:
+            sorted_elements.update(np.ndenumerate(a))
+        counts = np.zeros_like(a, dtype=float)
+
+    else:
+        sorted_elements = SortedList(np.ndenumerate(A), key=lambda i:i[1])
+        counts = np.zeros_like(A, dtype=float)
 
     for (i,j),v in sorted_elements:
         left =  ((None,None), v - (tolerance/2))
         right = ((None,None), v + (tolerance/2))
 
-        counts[i,j] = sorted_elements.bisect_right(right) - \
-                      sorted_elements.bisect_left(left)
+        counts[i,j] += sorted_elements.bisect_right(right) - \
+                       sorted_elements.bisect_left(left)
 
     return counts
 
@@ -67,11 +74,13 @@ def similarity_matrix(mzs1, mzs2, pmz1=None, pmz2=None, tolerance=.01):
     frag_count[len(mzs1):] = counts_matrix(mz_diffs[len(mzs1):], tolerance)
 
     if pmz1 is not None and pmz2 is not None:
-        nls = np.concatenate([mzs1-pmz1,mzs2-pmz2])
+        nls = np.concatenate([pmz1-mzs1,pmz2-mzs2])
         nl_diffs = np.subtract.outer(nls,nls)
 
-        frag_count[:len(mzs1)] = np.maximum(frag_count[:len(mzs1)], counts_matrix(nl_diffs[:len(mzs1)], tolerance))
-        frag_count[len(mzs1):] = np.maximum(frag_count[len(mzs1):], counts_matrix(nl_diffs[len(mzs1):], tolerance))
+        frag_count[:len(mzs1)] *= counts_matrix(nl_diffs[:len(mzs1)], tolerance)
+        frag_count[len(mzs1):] *= counts_matrix(nl_diffs[len(mzs1):], tolerance)
+        frag_count = frag_count**.5
+
 
     frag_sim = np.linalg.pinv(sym_norm_laplacian(frag_count), hermitian=False)
 
@@ -173,12 +182,11 @@ def null_distribution(S, mzs1, mzs2, pmz1=None, pmz2=None, kind='align',
     mz_order = np.argsort(np.concatenate([mzs1,mzs2]))
 
     if pmz1 is not None and pmz2 is not None:
-        nl_order = np.argsort(np.concatenate([mzs1-pmz1,mzs2-pmz2]))
+        nl_order = np.argsort(np.concatenate([pmz1-mzs1,pmz2-mzs2]))
         null_dist = score_func(S[mz_order[idx_perms][:len(mzs1), None],
-                                 mz_order[idx_perms][len(mzs1):]] +
-                               S[nl_order[idx_perms][:len(mzs1), None],
-                                 nl_order[idx_perms][len(mzs1):]]
-                               )/2
+                                 mz_order[idx_perms][len(mzs1):]]+
+                               S[nl_order[idx_perms[:,::-1]][:len(mzs1), None],
+                                 nl_order[idx_perms[:,::-1]][len(mzs1):]])/2
     else:
         null_dist = score_func(S[mz_order[idx_perms][:len(mzs1), None],
                                  mz_order[idx_perms][len(mzs1):]])
@@ -186,17 +194,15 @@ def null_distribution(S, mzs1, mzs2, pmz1=None, pmz2=None, kind='align',
     return null_dist
 
 def significance_test(S, mzs1, mzs2, pmz1=None, pmz2=None, kind='align',
-                      max_log_iter=3, early_stop=True, seed=None):
+                      max_log_iter=3, return_dist=False, early_stop=True, seed=None):
     assert isinstance(max_log_iter, int)
 
     if kind == 'align':
-        score_func = fast_pairwise_alignment_score
+        observed_score = fast_pairwise_alignment_score(S[:len(mzs1),len(mzs1):])
     elif kind == 'match':
-        score_func = approximate_pairwise_matches_score
+        observed_score = approximate_pairwise_matches_score(S[:len(mzs1),len(mzs1):])
     else:
         assert kind in ['align', 'match']
-
-    observed_score = score_func(S[:len(mzs1),len(mzs1):])
 
     null_dist = []
     p_value = 1.0
@@ -221,4 +227,8 @@ def significance_test(S, mzs1, mzs2, pmz1=None, pmz2=None, kind='align',
             p_value = new_p_value
             break
 
-    return p_value
+    to_return = [p_value]
+    if return_dist:
+        to_return.append(null_dist)
+
+    return tuple(to_return)
