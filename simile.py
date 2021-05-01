@@ -227,8 +227,7 @@ def significance_test(S, mzs1, mzs2, pmz1=None, pmz2=None, kind='align',
             p_value = new_p_value
             break
 
-    to_return = [p_value]
     if return_dist:
-        to_return.append(null_dist)
-
-    return tuple(to_return)
+        return p_value, null_dist
+    else:
+        return p_value
