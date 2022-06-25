@@ -26,6 +26,21 @@ def _convert_spec(mzs, pmzs=None, nl_trim=1.5):
 ##########################
 # Spectral Graph Functions
 ##########################
+def _counts_matrix(D, tolerance):
+    d = D.ravel()
+    sort_idx = np.argsort(d)
+
+    left = np.searchsorted(d[sort_idx], d - tolerance / 2, "left")
+    right = np.searchsorted(d[sort_idx], d + tolerance / 2, "right")
+
+    c = right - left
+    c[np.isnan(d)] = 0
+
+    C = c.reshape(D.shape)
+
+    return C
+
+
 def _transition_matrix(W):
     DI = np.diag(1.0 / W.sum(axis=1))
     P = DI.dot(W)
@@ -64,50 +79,6 @@ def _sym_norm_laplacian(W):
 ##########################
 # Similarity Functions
 ##########################
-def _counts_matrix(frag_diffs, tolerance, tol_weight=0.5):
-    """
-    Return fragment difference counts matrix, frag_counts,
-    using fragment difference matrix, frag_diffs,
-    max number of Da between equivalent frag differences, tolerance,
-    and power weighting factor inversely proportional to tolerance, tol_weight
-    (which only matters when using multiple tolerances)
-    """
-
-    if not (isinstance(tolerance, list) or isinstance(tolerance, np.ndarray)):
-        tolerance = [tolerance]
-    tolerance = sorted(tolerance, reverse=True)
-
-    frag_counts = np.zeros_like(frag_diffs, dtype=float)
-    frag_diffs = np.array(
-        [(*idx, val) for idx, val in np.ndenumerate(frag_diffs) if not np.isnan(val)]
-    )
-    if frag_diffs.size:
-        frag_diffs = frag_diffs[np.argsort(frag_diffs[:, 2])]
-
-        for i in range(len(frag_diffs)):
-            left_idx = 0
-            right_idx = -1
-            for tol in tolerance:
-                left_idx = bisect.bisect_right(
-                    frag_diffs[:, 2],
-                    frag_diffs[i, 2] - (tol / 2),
-                    lo=left_idx,
-                    hi=right_idx,
-                )
-                right_idx = bisect.bisect_left(
-                    frag_diffs[:, 2],
-                    frag_diffs[i, 2] + (tol / 2),
-                    lo=left_idx,
-                    hi=right_idx,
-                )
-
-                count = right_idx - left_idx
-
-                frag_counts[int(frag_diffs[i, 0]), int(frag_diffs[i, 1])] += count / (
-                    tol**tol_weight
-                )
-
-    return frag_counts
 
 
 def similarity_matrix(mzs, pmzs=None, tolerance=0.01, nl_trim=1.5, iters=2):
