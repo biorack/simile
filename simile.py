@@ -122,13 +122,13 @@ def similarity_matrix(mzs, pmzs=None, tolerance=0.01, nl_trim=1.5, iters=2):
 
     mzs, nls, pmzs, spec_ids, mz_diffs, nl_diffs = _convert_spec(mzs, pmzs, nl_trim)
 
-    frag_count = np.zeros_like(mz_diffs, dtype=float)
+    C = np.zeros_like(mz_diffs, dtype=float)
     for n in set(spec_ids):
         mz_count = _counts_matrix(mz_diffs[spec_ids == n], tolerance)
         nl_count = _counts_matrix(nl_diffs[spec_ids == n], tolerance)
-        frag_count[spec_ids == n] = mz_count + nl_count + (mz_count * nl_count) ** 0.5
+        C[spec_ids == n] = mz_count + nl_count + (mz_count * nl_count) ** 0.5
 
-    L, p = _sym_norm_laplacian(C.toarray())
+    L, p = _sym_norm_laplacian(C)
 
     S = -p
     for i in range(1, iters + 1):
@@ -213,7 +213,9 @@ def match_scores(S, C, M, spec_ids, gap_penalty):
     scores = scores[shifts].mean(0)
     probs = probs[shifts].mean(0)
 
-    return scores, probs
+    score = scores.clip(0).sum() / abs(scores).sum()
+
+    return score, scores, probs
 
 
 ##########################
