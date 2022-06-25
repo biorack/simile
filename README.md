@@ -7,7 +7,7 @@ SIMILE (Significant Interrelation of MS/MS Ions via Laplacian Embedding) is a Py
 - Precursor-based neutral loss difference counts can be used in addition to the original MZ difference counts
 - Maximum weight matching is used instead of original monotonic alignment method with improved performance
 - Gap penalties to further improve significance estimation
-- Multiple macthing in addition to original pairwise matching for fragment centric analyses
+- Multiple matching in addition to original pairwise matching for fragment centric analyses
 - MUCH faster mass delta counting and significance testing
 - Matching ions report summarizing all scores and mass deltas with metadata
 
