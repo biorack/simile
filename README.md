@@ -1,7 +1,7 @@
 # SIMILE
 
 SIMILE (Significant Interrelation of MS/MS Ions via Laplacian Embedding) is a Python library for interrelating fragmentation spectra with significance estimation and is robust to multiple differences in chemical structure.
-[bioRxiv preprint](https://www.biorxiv.org/content/10.1101/2021.02.24.432767v1)
+[Nature Communications manuscript](https://doi.org/10.1038/s41467-022-30118-9)
 
 ### New in V2:
 - Precursor-based neutral loss difference counts can be used in addition to the original MZ difference counts
