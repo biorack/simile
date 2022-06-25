@@ -209,7 +209,7 @@ def null_distribution(scores, probs, iterations=1e5, seed=None):
 
 def mcp_test(scores, probs, log_size=5, return_dist=False, early_stop=False, seed=None):
     """
-    Return approximation of 2D Monte Carlo permutation test using
+    Return approximation of 2D Monte Carlo permutation test
     using match score of each fragment ion, scores,
     following pro/con comparison probablilities, probs
     """
@@ -244,8 +244,8 @@ def mcp_test(scores, probs, log_size=5, return_dist=False, early_stop=False, see
 
 def z_test(scores, probs, log_size=6, return_dist=False, seed=None):
     """
-    Return approximation of z-test using using
-    using match score of each fragment ion, scores,
+    Return approximation of z-test using
+    match score of each fragment ion, scores,
     following pro/con comparison probablilities, probs
     """
 
@@ -265,7 +265,9 @@ def z_test(scores, probs, log_size=6, return_dist=False, seed=None):
 ##########################
 # Analysis Functions
 ##########################
-def matching_ions_report(S, C, M, mzs, pmzs=None, spec_name=None):
+def matching_ions_report(
+    S, C, M, mzs, pmzs=None, spec_name=None, comp_types=["con", "none", "pro"]
+):
     """
     Return matching ions report DataFrame, mi_df,
     describing all matching ions found using
@@ -289,7 +291,7 @@ def matching_ions_report(S, C, M, mzs, pmzs=None, spec_name=None):
         ("mz_diff", mz_diffs),
         ("nl_diff", nl_diffs),
         ("score", S),
-        ("type", np.array(["none", "pro", "con"])[C.astype(int)]),
+        ("type", np.asarray(comp_types)[C.astype(int) + 1]),
     ]:
         mi_df[name] = var[match_idxs]
 
