@@ -1,24 +1,17 @@
 # SIMILE
 
-SIMILE (Significant Interrelation of MS/MS Ions via Laplacian Embedding) is a Python library for pairwise alignment of fragmentation spectra with significance estimation and is robust to multiple differences in chemical structure.
+SIMILE (Significant Interrelation of MS/MS Ions via Laplacian Embedding) is a Python library for interrelating fragmentation spectra with significance estimation and is robust to multiple differences in chemical structure.
 [bioRxiv preprint](https://www.biorxiv.org/content/10.1101/2021.02.24.432767v1)
 
 ### New in V2:
-- Substitution matrices are now officially similarity matrices because they are now always symmetric
 - Precursor-based neutral loss difference counts can be used in addition to the original MZ difference counts
-- Maximum weight matching is available in addition to the original monotonic alignment method
+- Maximum weight matching is used instead of original monotonic alignment method with improved performance
+- Gap penalties to further improve significance estimation
+- Multiple macthing in addition to original pairwise matching for fragment centric analyses
+- MUCH faster mass delta counting and significance testing
+- Matching ions report summarizing all scores and mass deltas with metadata
 
 ![SIMILE Flow](SimileFig1Vert.png "SIMILE")
-
-## Features
-- Generate ~~substitution~~ similarity matrices interrelating fragment ions and neutral losses in fragmention spectra  
-(Just like how substitution matrices interrelate amino acids in protein sequences!)
-
-- Align/match and score fragmentation spectra according to the ~~substitutability~~ similarity of their fragment ions and neutral losses
-
-- Calculate the significance of aligned/matched fragmentation spectra
-
-- BONUS: Less than ~~200~~ 230 lines of intelligible code!
 
 ## Installation
 
@@ -32,26 +25,34 @@ conda env create -f environment-base.yml
 
 ## Python dependencies
 - python3 (pinned to 3.7 currently due to non-SIMILE bugs)
-- sortedcollections
 - numpy
 - scipy
+- pandas
 
 ## Usage
 
 ```python
 import simile as sml
 
-# Generate pair-specific similarity matrix
-S = sml.similarity_matrix(mzs1, mzs2, pmz1, pmz2, tolerance=.01)
+# Generate fragmentation similarity matrix
+S, spec_ids = sml.similarity_matrix(mzs, pmzs=pmzs, tolerance=.01)
 
-# Align/match and score using upper-right quadrant of substitution matrix
-align_score, alignment = sml.pairwise_align(S[:len(mzs1),len(mzs1):])
-match_score, matches = sml.pairwise_match(S[:len(mzs1),len(mzs1):])
+# Generate pro/con comparison matrix such that 
+# interspectral comparisons are 1 (pro) and
+# intraspectral comparisions are -1 (con)
+C = sml.inter_intra_compare(spec_ids)
 
-# Calculate significance of the alignment/matches
-align_pval = sml.significance_test(S, mzs1, mzs2, pmz1, pmz2, kind='align')
-match_pval = sml.significance_test(S, mzs1, mzs2, pmz1, pmz2, kind='match')
+# Generate max weight matching for similarity matrix
+M = sml.pairwise_match(S)
 
+# Score fragment ion similarity using previous matrices
+score, scores, probs = sml.match_scores(S, C, M, spec_ids, gap_penalty=4)
+
+# Calculate significance of max weight matching between fragment ions
+pval, null_dist = sml.mcp_test(scores, probs, return_dist=True, log_size=4)
+
+# Report back mass deltas and scores for simile comparison
+df = sml.matching_ions_report(S, C, M, mzs, pmzs)
 
 ```
 
