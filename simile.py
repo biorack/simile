@@ -44,24 +44,21 @@ def _stationary_distribution(P):
 
 
 def _diplacian(W):
-    I = np.identity(W.shape[0])
-
     P = _transition_matrix(W)
 
     p = _stationary_distribution(P)
+    p = np.repeat(p, len(p)).reshape(-1, len(p))
 
-    sqrt_p = np.sqrt(p)
+    D = P - p
 
-    D = np.diag(sqrt_p).dot(I - P).dot(np.diag(1.0 / sqrt_p))
-
-    return D
+    return D, p
 
 
 def _sym_norm_laplacian(W):
-    D = _diplacian(W)
+    D, p = _diplacian(W)
     L = (D + D.T) / 2
 
-    return L
+    return L, p
 
 
 ##########################
