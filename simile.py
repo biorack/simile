@@ -3,6 +3,7 @@ import pandas as pd
 from scipy.linalg import eig
 from scipy.optimize import linear_sum_assignment
 from scipy.stats import norm
+from scipy import sparse as sp
 
 ##########################
 # Helper Functions
@@ -93,19 +94,14 @@ def similarity_matrix(mzs, pmzs=None, tolerance=0.01, nl_trim=1.5, iters=2):
     mzs, nls, pmzs, spec_ids, mz_diffs, nl_diffs = _convert_spec(mzs, pmzs, nl_trim)
 
     C = np.zeros_like(mz_diffs, dtype=float)
-    for n in set(spec_ids):
+    for n in np.unique(spec_ids):
         mz_count = _counts_matrix(mz_diffs[spec_ids == n], tolerance)
         nl_count = _counts_matrix(nl_diffs[spec_ids == n], tolerance)
         C[spec_ids == n] = mz_count + nl_count + (mz_count * nl_count) ** 0.5
 
     L, p = _sym_norm_laplacian(C)
 
-    S = -p
-    for i in range(1, iters + 1):
-        S += L
-        if i < iters:
-            L = L.dot(L)
-
+    S = np.sum([np.linalg.matrix_power(L, i) for i in range(1, iters + 1)], axis=0) - p
     S -= np.diag(S.diagonal())
 
     return S, spec_ids
@@ -119,13 +115,11 @@ def pairwise_match(S):
     Return max weight matching matrix, M, of simile score matrix, S
     """
 
-    M = np.zeros_like(S)
-    row_ind, col_ind = linear_sum_assignment(S, maximize=True)
+    row, col = linear_sum_assignment(S, maximize=True)
 
-    match_scores = S[(tuple(row_ind), tuple(col_ind))]
-    good_match = match_scores > 0
-
-    M[(tuple(row_ind[good_match]), tuple(col_ind[good_match]))] = 1
+    M = sp.coo_matrix(
+        (S[tuple(row), tuple(col)], (row, col)), shape=S.shape, dtype=bool
+    )
 
     return M
 
@@ -136,9 +130,7 @@ def multiple_match(S, spec_ids):
     with rows treated seperately accoring to their spectrum id, spec_ids
     """
 
-    M = np.zeros_like(S)
-    for n in set(spec_ids):
-        M[spec_ids == n] = pairwise_match(S[spec_ids == n])
+    M = sp.hstack([pairwise_match(S[:, spec_ids == n]) for n in np.unique(spec_ids)])
 
     return M
 
@@ -158,7 +150,7 @@ def inter_intra_compare(spec_ids):
 
 def match_scores(S, C, M, spec_ids, gap_penalty):
     """
-    Return match score, scores, and pro/con comparison probablility, probs,
+    Return match score, frag_scores, and pro/con comparison probablility, frag_probs,
     of each fragment ion as flattened sum of products of
     simile score matrix, S,
     max weight matching matrix, M,
@@ -167,8 +159,8 @@ def match_scores(S, C, M, spec_ids, gap_penalty):
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
-    scores = (S * C * M).sum(0)
-    probs = (C > 0).mean(0)
+    frag_scores = (S * C * M.toarray()).sum(axis=0)
+    frag_probs = (C > 0).mean(axis=0)
 
     _, length = np.unique(spec_ids, return_counts=True)
 
@@ -180,43 +172,51 @@ def match_scores(S, C, M, spec_ids, gap_penalty):
         np.add.outer(np.arange(-gap_penalty, gap_penalty + 1), index + length) % length
     ) + start
 
-    scores = scores[shifts].mean(0)
-    probs = probs[shifts].mean(0)
+    frag_scores = frag_scores[shifts].mean(axis=0)
+    frag_probs = frag_probs[shifts].mean(axis=0)
 
-    score = scores.clip(0).sum() / abs(scores).sum()
-
-    return score, scores, probs
+    return frag_scores, frag_probs
 
 
 ##########################
 # Statistics Functions
 ##########################
-def null_distribution(scores, probs, iterations=1e5, seed=None):
+def null_distribution(frag_scores, frag_probs, iterations=1e5, seed=None):
     """
     Return null distribution, null_dist, of size iterations
-    using match score of each fragment ion, scores,
-    following pro/con comparison probablilities, probs
+    using match score of each fragment ion, frag_scores,
+    following pro/con comparison probablilities, frag_probs
     """
 
     rng = np.random.default_rng(seed)
 
-    comparisons = 2 * (rng.random((iterations, len(scores))) <= probs) - 1
-    null_dist = comparisons.dot(abs(scores))
+    comparisons = 2 * (rng.random((iterations, len(frag_scores))) <= frag_probs) - 1
+    null_dist = comparisons * abs(frag_scores)
 
     return null_dist
 
 
-def mcp_test(scores, probs, log_size=5, return_dist=False, early_stop=False, seed=None):
+def mcp_test(
+    S,
+    C,
+    M,
+    spec_ids,
+    gap_penalty,
+    log_size=5,
+    return_dist=False,
+    early_stop=False,
+    seed=None,
+):
     """
     Return approximation of 2D Monte Carlo permutation test
-    using match score of each fragment ion, scores,
-    following pro/con comparison probablilities, probs
+    using match score of each fragment ion, frag_scores,
+    following pro/con comparison probablilities, frag_probs
     """
 
     assert isinstance(log_size, int)
     log_size = max(log_size, 2)
 
-    score = scores.sum()
+    score = frag_scores.sum()
 
     null_dist = []
     pval = 1.0
@@ -225,7 +225,9 @@ def mcp_test(scores, probs, log_size=5, return_dist=False, early_stop=False, see
         iterations = 10**log_iter
 
         null_dist.extend(
-            null_distribution(scores, probs, iterations - len(null_dist), seed)
+            null_distribution(
+                frag_scores, frag_probs, iterations - len(null_dist), seed
+            )
         )
 
         # Subtract off miniscule amount for floating point error
@@ -241,24 +243,52 @@ def mcp_test(scores, probs, log_size=5, return_dist=False, early_stop=False, see
     return (pval, np.array(null_dist)) if return_dist else pval
 
 
-def z_test(scores, probs, log_size=6, return_dist=False, seed=None):
+def z_test(S, C, M, spec_ids, gap_penalty, log_size=6, return_dist=False, seed=None):
     """
     Return approximation of z-test using
-    match score of each fragment ion, scores,
-    following pro/con comparison probablilities, probs
+    match score of each fragment ion, frag_scores,
+    following pro/con comparison probablilities, frag_probs
     """
 
     assert isinstance(log_size, int)
     log_pop_size = max(log_size, 5)
 
-    score = scores.sum()
+    frag_scores, frag_probs = match_scores(S, C, M, spec_ids, gap_penalty)
 
-    null_dist = null_distribution(scores, probs, 10**log_size, seed)
+    null_dist = null_distribution(frag_scores, frag_probs, 10**log_size, seed)
 
-    z_score = (score - null_dist.mean()) / null_dist.std()
+    spec_scores = sp.coo_matrix(
+        (
+            frag_scores,
+            (spec_ids[M.row], spec_ids[M.col]),
+        ),
+    ).toarray()
+
+    spec_scores = sp.coo_matrix(
+        np.triu(spec_scores) + np.triu(spec_scores.T, 1),
+    )
+
+    frag_to_spec = np.searchsorted(
+        spec_scores.row + 1j * spec_scores.col,
+        spec_ids[M.row] + 1j * spec_ids[M.col],
+    )
+
+    frag_to_spec = sp.coo_matrix(
+        (np.ones_like(frag_to_spec), (np.arange(len(frag_to_spec)), frag_to_spec))
+    ).toarray()
+
+    ## TODO Normalize by self comparisons
+    frag_to_spec -= sp.coo_matrix(
+        (-np.ones_like(frag_to_spec), (np.arange(len(frag_to_spec)), frag_to_spec))
+    ).toarray()
+
+    null_dist = null_dist.dot(frag_to_spec)
+    z_score = (spec_scores.data - null_dist.mean(axis=0)) / null_dist.std(axis=0)
     pval = norm.sf(z_score)
 
-    return (pval, np.array(null_dist)) if return_dist else pval
+    return (
+        (spec_scores, pval, np.array(null_dist)) if return_dist else (spec_scores, pval)
+    )
 
 
 ##########################
