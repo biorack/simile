@@ -135,20 +135,20 @@ def multiple_match(S, spec_ids):
     return M
 
 
-# def inter_intra_compare(spec_ids):
-#     """
-#     Returns pro/con comparison matrix, C,
-#     such that interspectral comparisons are 1 (pro)
-#     and intraspectral comparisions are -1 (con)
-#     using spectrum ids, spec_ids, to deliniate spectra
-#     """
+def inter_intra_compare(spec_ids):
+    """
+    Returns pro/con comparison matrix, C,
+    such that interspectral comparisons are 1 (pro)
+    and intraspectral comparisions are -1 (con)
+    using spectrum ids, spec_ids, to deliniate spectra
+    """
 
-#     C = 2 * np.not_equal.outer(spec_ids, spec_ids) - 1
+    C = 2 * np.not_equal.outer(spec_ids, spec_ids) - 1
 
-#     return C
+    return C
 
 
-def match_scores(S, M, spec_ids):
+def match_scores(S, C, M, spec_ids):
     """
     Return match score, frag_scores, and pro/con comparison probablility, frag_probs,
     of each fragment ion as flattened sum of products of
@@ -158,9 +158,10 @@ def match_scores(S, M, spec_ids):
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
-    frag_scores = M.multiply(S)
+    frag_scores = M.multiply(S * C)
+    frag_probs = (C > 0).mean(axis=0)
 
-    return frag_scores
+    return frag_scores, frag_probs
 
 
 ##########################
@@ -176,7 +177,7 @@ def null_distribution(frag_scores, frag_probs, iterations=1e5, seed=None):
     rng = np.random.default_rng(seed)
 
     comparisons = 2 * (rng.random((iterations, len(frag_scores))) <= frag_probs) - 1
-    null_dist = comparisons * frag_scores
+    null_dist = comparisons * abs(frag_scores)
 
     return null_dist
 
@@ -229,6 +230,7 @@ def mcp_test(
 
 def z_test(
     S,
+    C,
     M,
     spec_ids,
     log_size=6,
@@ -244,7 +246,7 @@ def z_test(
     assert isinstance(log_size, int)
     log_pop_size = max(log_size, 5)
 
-    frag_scores, frag_probs = match_scores(S, M, spec_ids)
+    frag_scores, frag_probs = match_scores(S, C, M, spec_ids)
 
     frag_to_spec = sp.coo_matrix(
         (np.ones_like(spec_ids), (np.arange(len(spec_ids)), spec_ids)),
@@ -275,11 +277,6 @@ def z_test(
         (spec_scores, pval, np.array(null_dist)) if return_dist else (spec_scores, pval)
     )
 
-
-# 81756832
-# treber
-# sf
-# July 26 11:30
 
 ##########################
 # Analysis Functions
