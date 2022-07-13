@@ -130,52 +130,37 @@ def multiple_match(S, spec_ids):
     with rows treated seperately accoring to their spectrum id, spec_ids
     """
 
-    M = sp.hstack([pairwise_match(S[:, spec_ids == n]) for n in np.unique(spec_ids)])
+    M = sp.vstack([pairwise_match(S[spec_ids == n]) for n in np.unique(spec_ids)])
 
     return M
 
 
-def inter_intra_compare(spec_ids):
-    """
-    Returns pro/con comparison matrix, C,
-    such that interspectral comparisons are 1 (pro)
-    and intraspectral comparisions are -1 (con)
-    using spectrum ids, spec_ids, to deliniate spectra
-    """
+# def inter_intra_compare(spec_ids):
+#     """
+#     Returns pro/con comparison matrix, C,
+#     such that interspectral comparisons are 1 (pro)
+#     and intraspectral comparisions are -1 (con)
+#     using spectrum ids, spec_ids, to deliniate spectra
+#     """
 
-    C = 2 * np.not_equal.outer(spec_ids, spec_ids) - 1
+#     C = 2 * np.not_equal.outer(spec_ids, spec_ids) - 1
 
-    return C
+#     return C
 
 
-def match_scores(S, C, M, spec_ids, gap_penalty):
+def match_scores(S, M, spec_ids):
     """
     Return match score, frag_scores, and pro/con comparison probablility, frag_probs,
     of each fragment ion as flattened sum of products of
     simile score matrix, S,
     max weight matching matrix, M,
     and comparison matrix, C
-    with intra-spectral rolling average of +/- window size, gap_penalty,
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
-    frag_scores = (S * C * M.toarray()).sum(axis=0)
-    frag_probs = (C > 0).mean(axis=0)
+    frag_scores = M.multiply(S)
 
-    _, length = np.unique(spec_ids, return_counts=True)
-
-    index = np.concatenate([np.arange(l) for l in length])
-    start = np.arange(len(index)) - index
-    length = np.concatenate([[l] * l for l in length])
-
-    shifts = (
-        np.add.outer(np.arange(-gap_penalty, gap_penalty + 1), index + length) % length
-    ) + start
-
-    frag_scores = frag_scores[shifts].mean(axis=0)
-    frag_probs = frag_probs[shifts].mean(axis=0)
-
-    return frag_scores, frag_probs
+    return frag_scores
 
 
 ##########################
@@ -191,7 +176,7 @@ def null_distribution(frag_scores, frag_probs, iterations=1e5, seed=None):
     rng = np.random.default_rng(seed)
 
     comparisons = 2 * (rng.random((iterations, len(frag_scores))) <= frag_probs) - 1
-    null_dist = comparisons * abs(frag_scores)
+    null_dist = comparisons * frag_scores
 
     return null_dist
 
@@ -201,7 +186,6 @@ def mcp_test(
     C,
     M,
     spec_ids,
-    gap_penalty,
     log_size=5,
     return_dist=False,
     early_stop=False,
@@ -243,7 +227,14 @@ def mcp_test(
     return (pval, np.array(null_dist)) if return_dist else pval
 
 
-def z_test(S, C, M, spec_ids, gap_penalty, log_size=6, return_dist=False, seed=None):
+def z_test(
+    S,
+    M,
+    spec_ids,
+    log_size=6,
+    return_dist=False,
+    seed=None,
+):
     """
     Return approximation of z-test using
     match score of each fragment ion, frag_scores,
@@ -253,36 +244,30 @@ def z_test(S, C, M, spec_ids, gap_penalty, log_size=6, return_dist=False, seed=N
     assert isinstance(log_size, int)
     log_pop_size = max(log_size, 5)
 
-    frag_scores, frag_probs = match_scores(S, C, M, spec_ids, gap_penalty)
-
-    null_dist = null_distribution(frag_scores, frag_probs, 10**log_size, seed)
-
-    spec_scores = sp.coo_matrix(
-        (
-            frag_scores,
-            (spec_ids[M.row], spec_ids[M.col]),
-        ),
-    ).toarray()
-
-    spec_scores = sp.coo_matrix(
-        np.triu(spec_scores) + np.triu(spec_scores.T, 1),
-    )
-
-    frag_to_spec = np.searchsorted(
-        spec_scores.row + 1j * spec_scores.col,
-        spec_ids[M.row] + 1j * spec_ids[M.col],
-    )
+    frag_scores, frag_probs = match_scores(S, M, spec_ids)
 
     frag_to_spec = sp.coo_matrix(
-        (np.ones_like(frag_to_spec), (np.arange(len(frag_to_spec)), frag_to_spec))
-    ).toarray()
+        (np.ones_like(spec_ids), (np.arange(len(spec_ids)), spec_ids)),
+    )
 
-    ## TODO Normalize by self comparisons
-    frag_to_spec -= sp.coo_matrix(
-        (-np.ones_like(frag_to_spec), (np.arange(len(frag_to_spec)), frag_to_spec))
-    ).toarray()
+    spec_scores = frag_to_spec.T.dot(frag_scores).dot(frag_to_spec).toarray()
+    spec_scores = (sp.triu(spec_scores) + sp.triu(spec_scores.T, 1)).tocoo()
 
-    null_dist = null_dist.dot(frag_to_spec)
+    idx_sort = np.argsort(spec_scores.row + 1j * spec_scores.col)
+    new_col = np.searchsorted(
+        (spec_scores.row + 1j * spec_scores.col)[idx_sort],
+        spec_ids[np.minimum(frag_scores.row, frag_scores.col)]
+        + 1j * spec_ids[np.maximum(frag_scores.row, frag_scores.col)],
+    )
+    new_col = np.argsort(idx_sort)[new_col]
+
+    frag_to_spec = sp.coo_matrix(
+        (frag_to_spec.data, (np.arange(len(spec_ids)), new_col))
+    )
+
+    null_dist = null_distribution(frag_scores.data, frag_probs, 10**log_size, seed)
+    null_dist = null_dist.dot(frag_to_spec.toarray())
+
     z_score = (spec_scores.data - null_dist.mean(axis=0)) / null_dist.std(axis=0)
     pval = norm.sf(z_score)
 
@@ -290,6 +275,11 @@ def z_test(S, C, M, spec_ids, gap_penalty, log_size=6, return_dist=False, seed=N
         (spec_scores, pval, np.array(null_dist)) if return_dist else (spec_scores, pval)
     )
 
+
+# 81756832
+# treber
+# sf
+# July 26 11:30
 
 ##########################
 # Analysis Functions
