@@ -135,7 +135,7 @@ def multiple_match(S, spec_ids):
     return M
 
 
-def inter_intra_compare(spec_ids):
+def inter_intra_compare(M, spec_ids):
     """
     Returns pro/con comparison matrix, C,
     such that interspectral comparisons are 1 (pro)
@@ -143,7 +143,9 @@ def inter_intra_compare(spec_ids):
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
-    C = 2 * np.not_equal.outer(spec_ids, spec_ids) - 1
+    C = M.toarray().dot(np.equal.outer(spec_ids, spec_ids)).T
+    C *= np.not_equal.outer(spec_ids, spec_ids)
+    C = 2 * C - 1
 
     return C
 
@@ -184,8 +186,8 @@ def null_distribution(frag_scores, frag_probs, iterations=1e5, seed=None):
 
 def mcp_test(
     S,
-    C,
     M,
+    C,
     spec_ids,
     log_size=5,
     return_dist=False,
@@ -227,7 +229,8 @@ def mcp_test(
     null_dist = null_dist.dot(frag_to_spec.toarray())
 
     # Subtract off miniscule amount for floating point error
-    pval = (spec_scores.data - 1e-9 <= np.array(null_dist)).sum(axis=0).clip(1) / (
+    pval = spec_scores.copy()
+    pval.data = (spec_scores.data - 1e-9 <= np.array(null_dist)).sum(axis=0).clip(1) / (
         10**log_size
     )
 
@@ -238,8 +241,8 @@ def mcp_test(
 
 def z_test(
     S,
-    C,
     M,
+    C,
     spec_ids,
     log_size=6,
     return_dist=False,
@@ -281,7 +284,8 @@ def z_test(
     null_dist = null_dist.dot(frag_to_spec.toarray())
 
     z_score = (spec_scores.data - null_dist.mean(axis=0)) / null_dist.std(axis=0)
-    pval = norm.sf(z_score)
+    pval = spec_scores.copy()
+    pval.data = norm.sf(z_score)
 
     return (
         (spec_scores, pval, np.array(null_dist)) if return_dist else (spec_scores, pval)
@@ -292,7 +296,7 @@ def z_test(
 # Analysis Functions
 ##########################
 def matching_ions_report(
-    S, C, M, mzs, pmzs=None, spec_name=None, comp_types=["con", "none", "pro"]
+    S, M, C, mzs, pmzs=None, spec_name=None, comp_types=["con", "none", "pro"]
 ):
     """
     Return matching ions report DataFrame, mi_df,
