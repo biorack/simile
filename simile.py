@@ -296,7 +296,7 @@ def matching_ions_report(
     S, C, M, mzs, and pmzs
     with option to name mass spectra used, spec_name
     """
-    match_idxs = np.where(np.triu(np.maximum(M, M.T)))
+    M = sp.triu(M + M.T)
 
     mzs, nls, pmzs, spec_ids, mz_diffs, nl_diffs = _convert_spec(mzs, pmzs)
 
@@ -307,15 +307,15 @@ def matching_ions_report(
 
     mi_df = {}
     for name, var in [("spec_key", spec_key), ("pmz", pmzs), ("mz", mzs)]:
-        mi_df[name + "_1"] = var[match_idxs[0]]
-        mi_df[name + "_2"] = var[match_idxs[1]]
+        mi_df[name + "_1"] = var[M.row]
+        mi_df[name + "_2"] = var[M.col]
     for name, var in [
         ("mz_diff", mz_diffs),
         ("nl_diff", nl_diffs),
         ("score", S),
         ("type", np.asarray(comp_types)[C.astype(int) + 1]),
     ]:
-        mi_df[name] = var[match_idxs]
+        mi_df[name] = var[M.row, M.col]
 
     mi_df = pd.DataFrame(mi_df)
 
