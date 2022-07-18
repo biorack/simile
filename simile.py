@@ -148,14 +148,14 @@ def inter_intra_compare(spec_ids):
     return C
 
 
-def match_scores(S, C, M, spec_ids):
+def match_scores(S, C, M):
     """
-    Return match score, frag_scores, and pro/con comparison probablility, frag_probs,
-    of each fragment ion as flattened sum of products of
+    Return fragment match scores, frag_scores,
+    and pro/con comparison probablility, frag_probs,
+    of each fragment ion as elementwise products of
     simile score matrix, S,
     max weight matching matrix, M,
     and comparison matrix, C
-    using spectrum ids, spec_ids, to deliniate spectra
     """
 
     frag_scores = M.multiply(S * C)
@@ -193,8 +193,10 @@ def mcp_test(
 ):
     """
     Return approximation of 2D Monte Carlo permutation test
-    using match score of each fragment ion, frag_scores,
-    following pro/con comparison probablilities, frag_probs
+    using simile score matrix, S,
+    max weight matching matrix, M,
+    and comparison matrix, C
+    delineating between spectra with spec_ids
     """
 
     assert isinstance(log_size, int)
@@ -245,8 +247,10 @@ def z_test(
 ):
     """
     Return approximation of z-test using
-    match score of each fragment ion, frag_scores,
-    following pro/con comparison probablilities, frag_probs
+    simile score matrix, S,
+    max weight matching matrix, M,
+    and comparison matrix, C
+    delineating between spectra with spec_ids
     """
 
     assert isinstance(log_size, int)
