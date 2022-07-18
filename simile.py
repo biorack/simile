@@ -202,7 +202,7 @@ def mcp_test(
     assert isinstance(log_size, int)
     log_size = max(log_size, 2)
 
-    frag_scores, frag_probs = match_scores(S, C, M, spec_ids)
+    frag_scores, frag_probs = match_scores(S, C, M)
 
     frag_to_spec = sp.coo_matrix(
         (np.ones_like(spec_ids), (np.arange(len(spec_ids)), spec_ids)),
@@ -256,7 +256,7 @@ def z_test(
     assert isinstance(log_size, int)
     log_pop_size = max(log_size, 5)
 
-    frag_scores, frag_probs = match_scores(S, C, M, spec_ids)
+    frag_scores, frag_probs = match_scores(S, C, M)
 
     frag_to_spec = sp.coo_matrix(
         (np.ones_like(spec_ids), (np.arange(len(spec_ids)), spec_ids)),
