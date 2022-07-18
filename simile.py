@@ -189,7 +189,6 @@ def mcp_test(
     spec_ids,
     log_size=5,
     return_dist=False,
-    early_stop=False,
     seed=None,
 ):
     """
@@ -201,31 +200,38 @@ def mcp_test(
     assert isinstance(log_size, int)
     log_size = max(log_size, 2)
 
-    score = frag_scores.sum()
+    frag_scores, frag_probs = match_scores(S, C, M, spec_ids)
 
-    null_dist = []
-    pval = 1.0
-    start = 2 if early_stop else log_size
-    for log_iter in range(start, log_size + 1):
-        iterations = 10**log_iter
+    frag_to_spec = sp.coo_matrix(
+        (np.ones_like(spec_ids), (np.arange(len(spec_ids)), spec_ids)),
+    )
 
-        null_dist.extend(
-            null_distribution(
-                frag_scores, frag_probs, iterations - len(null_dist), seed
-            )
-        )
+    spec_scores = frag_to_spec.T.dot(frag_scores).dot(frag_to_spec).toarray()
+    spec_scores = (sp.triu(spec_scores) + sp.triu(spec_scores.T, 1)).tocoo()
 
-        # Subtract off miniscule amount for floating point error
-        new_pval = (score - 1e-9 <= np.array(null_dist)).sum() / iterations
-        new_pval = max(new_pval, 1.0 / iterations)
+    idx_sort = np.argsort(spec_scores.row + 1j * spec_scores.col)
+    new_col = np.searchsorted(
+        (spec_scores.row + 1j * spec_scores.col)[idx_sort],
+        spec_ids[np.minimum(frag_scores.row, frag_scores.col)]
+        + 1j * spec_ids[np.maximum(frag_scores.row, frag_scores.col)],
+    )
+    new_col = np.argsort(idx_sort)[new_col]
 
-        if (new_pval / pval) <= 0.9**log_iter:
-            pval = new_pval
-        else:
-            pval = new_pval
-            break
+    frag_to_spec = sp.coo_matrix(
+        (frag_to_spec.data, (np.arange(len(spec_ids)), new_col))
+    )
 
-    return (pval, np.array(null_dist)) if return_dist else pval
+    null_dist = null_distribution(frag_scores.data, frag_probs, 10**log_size, seed)
+    null_dist = null_dist.dot(frag_to_spec.toarray())
+
+    # Subtract off miniscule amount for floating point error
+    pval = (spec_scores.data - 1e-9 <= np.array(null_dist)).sum(axis=0).clip(1) / (
+        10**log_size
+    )
+
+    return (
+        (spec_scores, pval, np.array(null_dist)) if return_dist else (spec_scores, pval)
+    )
 
 
 def z_test(
