@@ -135,6 +135,20 @@ def multiple_match(S, spec_ids):
     return M
 
 
+def sym_compare(M, spec_ids):
+    """
+    Returns pro/con comparison matrix, C,
+    such that symmetric comparisons are 1 (pro)
+    and asymmetric comparisions are -1 (con)
+    using spectrum ids, spec_ids, to deliniate spectra
+    """
+
+    C = M.toarray().dot(np.equal.outer(spec_ids, spec_ids)).T
+    C = 2 * C - 1
+
+    return C
+
+
 def inter_intra_compare(M, spec_ids):
     """
     Returns pro/con comparison matrix, C,
@@ -143,8 +157,7 @@ def inter_intra_compare(M, spec_ids):
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
-    C = M.toarray().dot(np.equal.outer(spec_ids, spec_ids)).T
-    C = 2 * C - 1
+    C = 2 * np.not_equal.outer(spec_ids, spec_ids) - 1
 
     return C
 
