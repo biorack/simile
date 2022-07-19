@@ -43,7 +43,7 @@ M = sml.multiple_match(S, spec_ids)
 # Generate pro/con comparison matrix such that 
 # symmetric matches are 1 (pro) and
 # asymmetric matches are -1 (con)
-C = sml.sym_compare(M,spec_ids)
+C = sml.sym_compare(M, spec_ids)
 
 # Calculate significance of max weight matching between fragment ions
 # for all combination of spectra
