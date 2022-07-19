@@ -144,7 +144,6 @@ def inter_intra_compare(M, spec_ids):
     """
 
     C = M.toarray().dot(np.equal.outer(spec_ids, spec_ids)).T
-    C *= np.not_equal.outer(spec_ids, spec_ids)
     C = 2 * C - 1
 
     return C
