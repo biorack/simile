@@ -178,7 +178,7 @@ def null_distribution(frag_scores, frag_probs, iterations=1e5, seed=None):
     rng = np.random.default_rng(seed)
 
     comparisons = 2 * (rng.random((iterations, len(frag_scores))) <= frag_probs) - 1
-    null_dist = comparisons * abs(frag_scores)
+    null_dist = comparisons * frag_scores
 
     return null_dist
 
