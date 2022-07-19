@@ -138,8 +138,8 @@ def multiple_match(S, spec_ids):
 def sym_compare(M, spec_ids):
     """
     Returns pro/con comparison matrix, C,
-    such that symmetric comparisons are 1 (pro)
-    and asymmetric comparisions are -1 (con)
+    such that symmetric matches are 1 (pro)
+    and asymmetric matches are -1 (con)
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
@@ -152,8 +152,8 @@ def sym_compare(M, spec_ids):
 def inter_intra_compare(M, spec_ids):
     """
     Returns pro/con comparison matrix, C,
-    such that interspectral comparisons are 1 (pro)
-    and intraspectral comparisions are -1 (con)
+    such that interspectral matches are 1 (pro)
+    and intraspectral matches are -1 (con)
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
