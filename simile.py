@@ -144,12 +144,13 @@ def sym_compare(M, spec_ids):
     """
 
     C = M.toarray().dot(np.equal.outer(spec_ids, spec_ids))
+    C &= np.not_equal.outer(spec_ids, spec_ids)
     C = 2 * (C | C.T) - 1
 
     return C
 
 
-def inter_intra_compare(M, spec_ids):
+def inter_intra_compare(spec_ids):
     """
     Returns pro/con comparison matrix, C,
     such that interspectral matches are 1 (pro)
