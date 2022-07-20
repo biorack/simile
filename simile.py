@@ -143,8 +143,8 @@ def sym_compare(M, spec_ids):
     using spectrum ids, spec_ids, to deliniate spectra
     """
 
-    C = M.toarray().dot(np.equal.outer(spec_ids, spec_ids)).T
-    C = 2 * C - 1
+    C = M.toarray().dot(np.equal.outer(spec_ids, spec_ids))
+    C = 2 * (C | C.T) - 1
 
     return C
 
